@@ -11,6 +11,7 @@ import subprocess
 import re
 import os
 import sys
+import socket
 
 # TODO: Consider adding a check for masscan binary availability before proceeding
 def parse_args():
@@ -64,6 +65,14 @@ def run_masscan(cidr, input_file, ports, rate, open_only):
 
 
 def parse_and_write(lines, output_dir):
+    # Determine local IPs to exclude (including loopback)
+    local_ips = set(['127.0.0.1'])
+    try:
+        hostname = socket.gethostname()
+        local_ips.update(socket.gethostbyname_ex(hostname)[2])
+    except Exception:
+        pass
+
     # TODO: Consider using JSON/NDJSON output for more robust parsing instead of regex
     pattern = re.compile(r"Discovered open port (\d+)/\w+ on ([0-9\.]+)")
     ports_map = {}
@@ -73,7 +82,11 @@ def parse_and_write(lines, output_dir):
             continue
         port = m.group(1)
         ip = m.group(2)
+        # Exclude local addresses
+        if ip in local_ips:
+            continue
         ports_map.setdefault(port, set()).add(ip)
+
     os.makedirs(output_dir, exist_ok=True)
     for port, ips in ports_map.items():
         filename = os.path.join(output_dir, f"port-{port}")
