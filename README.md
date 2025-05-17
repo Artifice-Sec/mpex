@@ -1,44 +1,51 @@
 # masscan-port-extractor
 
-A lightweight Python wrapper for [Masscan](https://github.com/robertdavidgraham/masscan) that automates TCP port scanning, excludes your local host from results, and cleanly extracts per-port host lists for further processing.
+**A professional, feature-rich Python wrapper around [Masscan](https://github.com/robertdavidgraham/masscan) for automated port scanning, host exclusion, live feedback, plugin hooks, and flexible aggregated Nmap outputs.**
 
 ---
 
-## 🚀 Features
+## 🚀 Key Features
 
-- **Single or bulk target input**: Accepts a CIDR range or a file containing arbitrary IPs/networks.
-- **Port list support**: Scan individual ports, comma-separated lists, or ranges (e.g. `80,443,1000-1100`).
-- **Rate control**: Fine-tune packet-per-second (`--max-rate`) for speed vs. stealth.
-- **Open-only filter**: Only emit hosts with open ports.
-- **Local IP exclusion**: Automatically detects and excludes your own machine’s IP addresses (including loopback).
-- **Per-port outputs**: Generates one file per port (e.g. `port-80`) listing only the remote IP addresses where that port is open.
-- **Minimal dependencies**: Pure Python 3 script calling Masscan—no extra libraries.
+- **Flexible Targeting**: Scan a single IP (`--ip`), entire CIDR ranges (`--cidr`), or bulk lists (`--input-file`).
+- **Port Specification**: Accept individual ports, comma-separated lists, and ranges (e.g., `80,443,1000-1100`).
+- **Rate Control**: Adjust scan speed via `--rate` (packets per second).
+- **Host Exclusions**: Skip localhost, your own interfaces, inline CIDRs (`--exclude`), or file-based exclusions (`--excludefile`).
+- **Live Feedback**: Stream Masscan output in real time and display parsing progress (`--live`).
+- **Plugin Hooks**: Trigger any tool or script per discovery using `{ip}` and `{port}` placeholders. Examples:
+  - `curl http://{ip}:{port}` – simple banner grabs
+  - `nikto -h http://{ip}:{port}` – web vulnerability scans
+  - `echo "Found {port} on {ip}" | mail -s "Port Alert" you@domain.com` – notifications
+  - `./custom-script.sh {ip} {port}` – custom processing or integrations
+- **Aggregated Nmap Scans**: Perform a single Nmap run on all discovered hosts using `--nmap-output` and choose from multiple formats (`--nmap-format`: N, X, G, S, or A).
 
 ---
 
-## 📋 Requirements
+## 📋 Prerequisites
 
-- Python 3.6+
-- [Masscan](https://github.com/robertdavidgraham/masscan) installed and in your `$PATH`
+- **Python**: 3.6 or later
+- **Masscan**: Installed and available in your `$PATH`
+- **Nmap**: For aggregated scanning (optional)
 
 ---
 
 ## ⚙️ Installation
 
-1. Clone or download this repository:
+1. **Clone the repository**
 
    ```bash
    git clone https://github.com/youruser/masscan-port-extractor.git
    cd masscan-port-extractor
    ```
 
-2. Ensure Python 3 is available:
+2. **Ensure executables are available**
 
    ```bash
-   python3 --version
+   python3 --version  # should be >= 3.6
+   masscan --version  # shows Masscan version
+   nmap --version     # optional, for Nmap integration
    ```
 
-3. Make the script executable (optional):
+3. **Make the script executable** (optional)
 
    ```bash
    chmod +x masscan-port-extractor.py
@@ -49,87 +56,114 @@ A lightweight Python wrapper for [Masscan](https://github.com/robertdavidgraham/
 ## 🏃‍♂️ Usage
 
 ```bash
-usage: masscan-port-extractor.py [-h] (--cidr CIDR | --input-file INPUT_FILE)\                                  
-                                 --ports PORTS [--rate RATE]
-                                 [--output-dir OUTPUT_DIR] [--open-only]
-
-masscan-port-extractor: scan targets and write per-port IP lists
-
-required arguments:
-  --cidr CIDR            CIDR range to scan (e.g. 192.168.0.0/24)
-  --input-file INPUT_FILE
-                         File containing targets, one per line
-  --ports PORTS          Comma-separated ports or ranges (e.g. 22,80,8000-8100)
-
-optional arguments:
-  --rate RATE            Packets-per-second rate (default: 1000)
-  --output-dir OUTPUT_DIR
-                         Directory for per-port output files (default: .)
-  --open-only            Only show open ports (adds Masscan `--open` flag)
-  -h, --help             show this help message and exit
+python3 masscan-port-extractor.py [TARGET] --ports PORTS [OPTIONS]
 ```
 
-### Examples
+### Target Specification (choose one):
 
-- **Scan a /24 for HTTP and HTTPS**:
-  ```bash
-  python3 masscan-port-extractor.py --cidr 10.0.0.0/24 --ports 80,443 --rate 1000
-  ```
-  Produces files `port-80` and `port-443` in the current directory, excluding your local IP.
+| Option               | Description                   |
+|----------------------|-------------------------------|
+| `--ip <IP>`          | Single host                   |
+| `--cidr <CIDR>`      | CIDR network                  |
+| `--input-file FILE`  | File with one IP/CIDR per line|
 
-- **Scan from a host list file and save to `results/`**:
-  ```bash
-  python3 masscan-port-extractor.py --input-file hosts.txt --ports 22 --rate 1000 --output-dir results
-  ```
-  Creates `results/port-22` with all SSH-enabled hosts, excluding your own machine.
+### Core Options:
 
-- **Only list open ports**:
-  ```bash
-  python3 masscan-port-extractor.py --cidr 192.168.1.0/24 --ports 3389,445 --open-only
-  ```
+| Option              | Description                                                   |
+|---------------------|---------------------------------------------------------------|
+| `--ports PORTS`     | Ports or ranges (e.g., `22,80,443,8000-8100`)                |
+| `--rate RATE`       | Packets per second (default: `1000`)                          |
+| `--output-dir DIR`  | Directory for per-port files (default: current directory)     |
 
----
+### Exclusion Controls:
 
-## 📂 Output
+| Option              | Description                                                   |
+|---------------------|---------------------------------------------------------------|
+| `--exclude LIST`    | Comma-separated IPs/CIDRs to skip                             |
+| `--excludefile FILE`| File listing IPs/CIDRs to skip (one per line)                 |
 
-For each unique port scanned, you’ll find a file named:
+### Live Mode & Hooks:
 
-```
-port-<port_number>
-```
+| Option            | Description                                                                     |
+|-------------------|---------------------------------------------------------------------------------|
+| `--live`          | Stream Masscan output and show parsing progress                                  |
+| `--hook-cmd CMD`  | Run any command per discovery; use `{ip}` and `{port}` placeholders (repeatable) |
 
-Each file contains one remote IP address per line, sorted, deduplicated, and your local IPs excluded.
+### Aggregated Nmap Integration:
 
----
-
-## 🔧 Troubleshooting
-
-- **`masscan: command not found`**: Ensure Masscan is installed (`brew install masscan` on macOS, or compile from source).
-- **Permission errors**: Masscan may require elevated privileges to send raw packets. Try:
-  ```bash
-  sudo python3 masscan-port-extractor.py ...
-  ```
-- **Tool includes your own IP**: If you still see your machine’s IP, double-check your network interfaces or add static exclusions.
-- **High false positives**: Lower the `--rate` or combine with `--open-only` to filter likely open ports.
+| Option               | Description                                                                             |
+|----------------------|-----------------------------------------------------------------------------------------|
+| `--nmap-output NAME` | Base filename for aggregated Nmap outputs                                               |
+| `--nmap-format FMT`  | Format: `N` (normal), `X` (XML), `G` (grepable), `S` (script), `A` (all via `-oA`)       |
 
 ---
 
-## 🤝 Contributing
+## 📂 Output Structure
 
-1. Fork the repo
-2. Create a feature branch (`git checkout -b feature/fooBar`)
-3. Commit your changes (`git commit -am 'Add some fooBar'`)
-4. Push to the branch (`git push origin feature/fooBar`)
-5. Open a Pull Request
-
-Please keep style consistent, run `flake8` or `pylint` to lint, and update this `README.md` when adding features.
+- **Per-port lists**: Files named `port-<port>` containing one IP per line.
+- **Aggregated Nmap**: Files based on `--nmap-output` and chosen `--nmap-format` (e.g., `scan.xml`, `scan.nmap`, `scan.gnmap`, etc.).
 
 ---
 
-## 📜 License
+## 🔧 Examples
 
-This project is licensed under the [MIT License](LICENSE). Feel free to copy, modify, and redistribute.
+1. **Scan a /24 and exclude gateway**
+   ```bash
+   python3 masscan-port-extractor.py \
+     --cidr 192.168.0.0/24 \
+     --ports 80,443,22 \
+     --exclude 192.168.0.1
+   ```
+
+2. **Stream live results with parsing feedback**
+   ```bash
+   python3 masscan-port-extractor.py \
+     --ip 192.168.0.117 \
+     --ports 445 \
+     --live
+   ```
+
+3. **Banner grabs with curl and vulnerability scans with Nikto**
+   ```bash
+   python3 masscan-port-extractor.py \
+     --cidr 10.0.0.0/24 \
+     --ports 80 \
+     --hook-cmd "curl http://{ip}:{port}" \
+     --hook-cmd "nikto -h http://{ip}:{port}"  
+   ```
+
+4. **Send notifications on each discovery**
+   ```bash
+   python3 masscan-port-extractor.py \
+     --cidr 10.0.0.0/24 \
+     --ports 22 \
+     --hook-cmd "echo 'SSH open on {ip}' | mail -s 'SSH Alert' you@domain.com"  
+   ```
+
+5. **Aggregated Nmap XML + grepable output**
+   ```bash
+   python3 masscan-port-extractor.py \
+     --input-file hosts.txt \
+     --ports 22,80,443 \
+     --nmap-output fullscan \
+     --nmap-format A
+   ```
 
 ---
 
-*Happy scanning!*
+## 🛠️ Troubleshooting
+
+- **Masscan not found**: Ensure installation or add to `PATH`.
+- **Permission denied**: Use `sudo` for raw packet scanning.
+- **Nmap missing**: Install if using `--nmap-output`.
+- **Packet loss**: Lower `--rate` to reduce noise on busy networks.
+
+---
+
+## 🤝 Contributing & License
+
+Contributions welcome! Fork, branch, and submit PRs. See [LICENSE](LICENSE) for MIT terms.
+
+---
+
+*© 2025 Artifice Security – Enhance your scanning workflow.*
