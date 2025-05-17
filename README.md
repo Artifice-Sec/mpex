@@ -1,6 +1,8 @@
 # masscan-port-extractor
 
-**masscan-port-extractor** is a Python-based orchestration tool that automates Masscan scans against single hosts, CIDR ranges, or bulk target lists. It parses Masscan’s output into per-port IP files, supports live streaming feedback and custom host exclusions, and lets you hook in any downstream command (curl, Nikto, custom scripts, etc.) per discovery. For deeper analysis, it can perform a single aggregated Nmap run in your choice of formats (normal, XML, grepable, script, or all). By consolidating scanning, parsing, and post-processing into one command, it dramatically reduces manual effort and speeds up repetitive network-discovery tasks.
+**masscan-port-extractor** is a Python-based orchestration tool that automates Masscan scans against single hosts, CIDR ranges, or bulk target lists. It parses Masscan’s output into per-port IP files, supports live streaming feedback and custom host exclusions, and lets you hook in any downstream command (curl, Nikto, custom scripts, etc.) per discovery. 
+
+For deeper analysis, it can perform a single aggregated Nmap run in your choice of formats (normal, XML, grepable, script, or all). By consolidating scanning, parsing, and post-processing into one command, it dramatically reduces manual effort and speeds up repetitive network-discovery tasks.
 
 ---
 
