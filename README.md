@@ -2,12 +2,16 @@
 
 **A professional, feature-rich Python wrapper around [Masscan](https://github.com/robertdavidgraham/masscan) for automated port scanning, host exclusion, live feedback, plugin hooks, and flexible aggregated Nmap outputs.**
 
+_masscan-port-extractor automates Masscan scans against individual IPs, CIDR ranges, or bulk target lists, then parses open-port results into separate `port-<port>` files. It streamlines your testing workflow with options for live streaming, host exclusion, custom command hooks (e.g., Nikto, curl, notifications), and an aggregated Nmap stage in various formats. By consolidating scanning, parsing, and post-processing, it significantly reduces manual steps and speeds up large-scale network discovery._
+
 ---
 
 ## 🚀 Key Features
 
 - **Flexible Targeting**: Scan a single IP (`--ip`), entire CIDR ranges (`--cidr`), or bulk lists (`--input-file`).
 - **Port Specification**: Accept individual ports, comma-separated lists, and ranges (e.g., `80,443,1000-1100`).
+- **Automated Masscan Execution**: Runs Masscan under the hood to discover open ports.
+- **Per-Port Output Files**: Automatically writes each port’s IPs to separate files named `port-<port>`.
 - **Rate Control**: Adjust scan speed via `--rate` (packets per second).
 - **Host Exclusions**: Skip localhost, your own interfaces, inline CIDRs (`--exclude`), or file-based exclusions (`--excludefile`).
 - **Live Feedback**: Stream Masscan output in real time and display parsing progress (`--live`).
