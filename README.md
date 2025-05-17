@@ -1,6 +1,8 @@
 # mpex
 
-**mpex** (Masscan Port EXtractor) is a Python-based orchestration tool that automates Masscan scans against single hosts, CIDR ranges, or bulk target lists. It runs Masscan under the hood, parses its output into per-port IP files, supports live streaming feedback, custom host exclusions, and plugin hooks for any downstream command (curl, Nikto, custom scripts, etc.). For deeper analysis, it can perform one aggregated Nmap run in your choice of formats (normal, XML, grepable, script, or all). By consolidating scanning, parsing, and post-processing into a single command, **mpex** dramatically reduces manual effort and accelerates large-scale network-discovery workflows.
+**mpex** (Masscan Port EXtractor) is a Python-based orchestration tool that automates Masscan scans against single hosts, CIDR ranges, or bulk target lists. It runs Masscan under the hood, parses its output into per-port IP files, supports live streaming feedback, custom host exclusions, and plugin hooks for any downstream command (curl, Nikto, custom scripts, etc.).
+
+For deeper analysis, it can perform one aggregated Nmap run in your choice of formats (normal, XML, grepable, script, or all). By consolidating scanning, parsing, and post-processing into a single command, **mpex** dramatically reduces manual effort and accelerates large-scale network-discovery workflows.
 
 ---
 
