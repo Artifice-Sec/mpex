@@ -1,27 +1,25 @@
 # masscan-port-extractor
-A lightweight Python wrapper for Masscan that scans networks and generates deduplicated per-port IP lists.
 
-# masscan-port-extractor
-
-A lightweight Python wrapper for [Masscan](https://github.com/robertdavidgraham/masscan) that automates TCP port scanning and cleanly extracts per-port host lists for further processing.
+A lightweight Python wrapper for [Masscan](https://github.com/robertdavidgraham/masscan) that automates TCP port scanning, excludes your local host from results, and cleanly extracts per-port host lists for further processing.
 
 ---
 
 ## 🚀 Features
 
-* **Single or bulk target input**: Accepts a CIDR range or a file containing arbitrary IPs/networks.
-* **Port list support**: Scan individual ports, comma-separated lists, or ranges (e.g. `80,443,1000-1100`).
-* **Rate control**: Fine-tune packet-per-second (`--max-rate`) for speed vs. stealth.
-* **Open-only filter**: Only emit hosts with open ports.
-* **Per-port outputs**: Generates one file per port (e.g. `port-80`) listing only the IP addresses where that port is open.
-* **Minimal dependencies**: Pure Python 3 script calling Masscan—no extra libraries.
+- **Single or bulk target input**: Accepts a CIDR range or a file containing arbitrary IPs/networks.
+- **Port list support**: Scan individual ports, comma-separated lists, or ranges (e.g. `80,443,1000-1100`).
+- **Rate control**: Fine-tune packet-per-second (`--max-rate`) for speed vs. stealth.
+- **Open-only filter**: Only emit hosts with open ports.
+- **Local IP exclusion**: Automatically detects and excludes your own machine’s IP addresses (including loopback).
+- **Per-port outputs**: Generates one file per port (e.g. `port-80`) listing only the remote IP addresses where that port is open.
+- **Minimal dependencies**: Pure Python 3 script calling Masscan—no extra libraries.
 
 ---
 
 ## 📋 Requirements
 
-* Python 3.6+
-* [Masscan](https://github.com/robertdavidgraham/masscan) installed and in your `$PATH`
+- Python 3.6+
+- [Masscan](https://github.com/robertdavidgraham/masscan) installed and in your `$PATH`
 
 ---
 
@@ -73,24 +71,19 @@ optional arguments:
 
 ### Examples
 
-* **Scan a /24 for HTTP and HTTPS**:
-
+- **Scan a /24 for HTTP and HTTPS**:
   ```bash
-  python3 masscan-port-extractor.py --cidr 10.0.0.0/24 --ports 80,443 --rate 5000
+  python3 masscan-port-extractor.py --cidr 10.0.0.0/24 --ports 80,443 --rate 1000
   ```
+  Produces files `port-80` and `port-443` in the current directory, excluding your local IP.
 
-  Produces files `port-80` and `port-443` in the current directory.
-
-* **Scan from a host list file and save to `results/`**:
-
+- **Scan from a host list file and save to `results/`**:
   ```bash
-  python3 masscan-port-extractor.py --input-file hosts.txt --ports 22 --rate 20000 --output-dir results
+  python3 masscan-port-extractor.py --input-file hosts.txt --ports 22 --rate 1000 --output-dir results
   ```
+  Creates `results/port-22` with all SSH-enabled hosts, excluding your own machine.
 
-  Creates `results/port-22` with all SSH-enabled hosts.
-
-* **Only list open ports**:
-
+- **Only list open ports**:
   ```bash
   python3 masscan-port-extractor.py --cidr 192.168.1.0/24 --ports 3389,445 --open-only
   ```
@@ -105,19 +98,19 @@ For each unique port scanned, you’ll find a file named:
 port-<port_number>
 ```
 
-Each file contains one IP address per line, sorted and deduplicated.
+Each file contains one remote IP address per line, sorted, deduplicated, and your local IPs excluded.
 
 ---
 
 ## 🔧 Troubleshooting
 
-* **`masscan: command not found`**: Ensure Masscan is installed (`brew install masscan` on macOS, or compile from source).
-* **Permission errors**: Masscan may require elevated privileges to send raw packets. Try:
-
+- **`masscan: command not found`**: Ensure Masscan is installed (`brew install masscan` on macOS, or compile from source).
+- **Permission errors**: Masscan may require elevated privileges to send raw packets. Try:
   ```bash
   sudo python3 masscan-port-extractor.py ...
   ```
-* **High false positives**: Lower the `--rate` or combine with `--open-only` to filter likely open ports.
+- **Tool includes your own IP**: If you still see your machine’s IP, double-check your network interfaces or add static exclusions.
+- **High false positives**: Lower the `--rate` or combine with `--open-only` to filter likely open ports.
 
 ---
 
