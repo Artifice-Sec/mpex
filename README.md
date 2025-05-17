@@ -1,10 +1,11 @@
 # masscan-port-extractor
 
-**A professional, feature-rich Python wrapper around [Masscan](https://github.com/robertdavidgraham/masscan) for automated port scanning, host exclusion, live feedback, plugin hooks, and flexible aggregated Nmap outputs.**
+**
 
-The masscan-port-extractor tool automates Masscan scans against individual IPs, CIDR ranges, or bulk target lists, then parses open-port results into separate `port-<port>` files.
+> masscan-port-extractor is a Python-based orchestration tool that automates Masscan scans against single hosts, CIDR ranges, or lists of targets. It parses Masscan’s output into per-port IP lists, supports live streaming feedback, custom host exclusions, and lets you hook in any downstream command (curl, Nikto, custom scripts, etc.). For deeper analysis, it can perform a single aggregated Nmap run in your choice of formats (normal, XML, grepable, script, or all). By consolidating scanning, parsing, and post-processing into one command, it dramatically reduces manual effort and speeds up repetitive network-discovery tasks.
+A professional, feature-rich Python wrapper around [Masscan](https://github.com/robertdavidgraham/masscan) for automated port scanning, host exclusion, live feedback, plugin hooks, and flexible aggregated Nmap outputs.**
 
-It streamlines your testing workflow with options for live streaming, host exclusion, custom command hooks (e.g., Nikto, curl, notifications), and an aggregated Nmap stage in various formats. By consolidating scanning, parsing, and post-processing, it significantly reduces manual steps and speeds up large-scale network discovery.
+_masscan-port-extractor automates Masscan scans against individual IPs, CIDR ranges, or bulk target lists, then parses open-port results into separate `port-<port>` files. It streamlines your testing workflow with options for live streaming, host exclusion, custom command hooks (e.g., Nikto, curl, notifications), and an aggregated Nmap stage in various formats. By consolidating scanning, parsing, and post-processing, it significantly reduces manual steps and speeds up large-scale network discovery._
 
 ---
 
