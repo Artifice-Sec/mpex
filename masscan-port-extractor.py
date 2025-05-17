@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
-masscan-port-extractor.py: A Python wrapper around Masscan to scan targets, exclude hosts, live-status, plugin hooks, and flexible aggregated Nmap output.
+mpex.py: A Python wrapper around Masscan to scan targets, exclude hosts, live-status, plugin hooks, and flexible aggregated Nmap outputs.
 
 Usage examples:
-  python masscan-port-extractor.py --cidr 192.168.0.0/24 --ports 80,443 --rate 1000 \
-      --exclude 192.168.0.1 --nmap-output webscan --nmap-format A
-  python masscan-port-extractor.py --ip 192.168.0.117 --ports 445 --rate 1000 --live
-  python masscan-port-extractor.py --input-file targets.txt --ports 22,80 --rate 2000 \
-      --excludefile skip.txt --hook-cmd "echo Found {port} on {ip}" \
-      --nmap-output fullscan --nmap-format G
+  python mpex.py --cidr 192.168.0.0/24 --ports 80,443 --rate 1000 --exclude 192.168.0.1
+  python mpex.py --input-file targets.txt --ports 22,80 --rate 5000 \
+      --excludefile skip.txt --live --hook-cmd "nmap -p {port} -oX nmap_{port}_{ip}.xml {ip}"  
+  python mpex.py --ip 192.168.0.117 --ports 445 --rate 1000  
+  python mpex.py --cidr 192.168.0.0/24 --ports 22,80,443 --rate 1000 --nmap-output allscan --nmap-format A
 """
 import argparse
 import subprocess
@@ -20,7 +19,7 @@ import ipaddress
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="masscan-port-extractor: scan targets, exclude hosts, live output, plugin hooks, and flexible aggregated Nmap"
+        description="mpex: orchestrate Masscan scans with exclusions, live feedback, hooks, and aggregated Nmap"
     )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--cidr", help="CIDR range to scan, e.g. 192.168.0.0/24")
@@ -31,19 +30,19 @@ def parse_args():
     parser.add_argument("--rate", type=int, default=1000,
                         help="Max packets per second (masscan --max-rate), default=1000")
     parser.add_argument("--output-dir", default=".",
-                        help="Directory to save per-port outputs and hooks")
+                        help="Directory to save outputs and hook results")
     parser.add_argument("--exclude",
-                        help="Comma-separated list of IPs or CIDRs to exclude from scan/output")
+                        help="Comma-separated list of IPs or CIDRs to skip")
     parser.add_argument("--excludefile",
-                        help="File containing IPs/CIDRs (one per line) to exclude from scan/output")
+                        help="File containing IPs/CIDRs to skip, one per line")
     parser.add_argument("--live", action="store_true",
-                        help="Show live processing status during scan and parse")
+                        help="Stream Masscan output and show parsing progress")
     parser.add_argument("--hook-cmd", action="append",
-                        help="Simple per-result command; use {ip} and {port} placeholders")
+                        help="Command to run per result; use {ip} and {port} placeholders")
     parser.add_argument("--nmap-output",
-                        help="Base name for aggregated Nmap output (prefix for files)")
+                        help="Base name for aggregated Nmap outputs")
     parser.add_argument("--nmap-format", choices=["N","X","G","S","A"], default="X",
-                        help="Nmap output format: N=normal (-oN), X=xml (-oX), G=grepable (-oG), S=script (-oS), A=all (-oA), default=X")
+                        help="Output format: N=normal, X=xml, G=grepable, S=script, A=all (default: X)")
     return parser.parse_args()
 
 def run_masscan(args):
@@ -61,22 +60,18 @@ def run_masscan(args):
         cmd += ["--excludefile", args.excludefile]
 
     if args.live:
-        try:
-            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                                     stderr=subprocess.PIPE, text=True)
-        except OSError as e:
-            print(f"[ERROR] execution error: {e}", file=sys.stderr)
-            sys.exit(1)
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE, text=True)
         print("[LIVE] Scanning... streaming results")
         lines = []
-        for raw_line in proc.stdout:
-            line = raw_line.rstrip()
+        for raw in proc.stdout:
+            line = raw.rstrip()
             print(line)
             lines.append(line)
         proc.wait()
         if proc.returncode != 0:
             err = proc.stderr.read()
-            print(f"[ERROR] masscan failed: {err}", file=sys.stderr)
+            print(f"[ERROR] Masscan failed: {err}", file=sys.stderr)
             sys.exit(1)
         return lines
     else:
@@ -84,10 +79,7 @@ def run_masscan(args):
             proc = subprocess.run(cmd, capture_output=True,
                                   text=True, check=True)
         except subprocess.CalledProcessError as e:
-            print(f"[ERROR] masscan failed: {e}\n{e.stderr}", file=sys.stderr)
-            sys.exit(1)
-        except OSError as e:
-            print(f"[ERROR] execution error: {e}", file=sys.stderr)
+            print(f"[ERROR] Masscan failed: {e}\n{e.stderr}", file=sys.stderr)
             sys.exit(1)
         return proc.stdout.splitlines()
 
@@ -104,7 +96,7 @@ def parse_and_write(args, lines):
     if args.excludefile:
         with open(args.excludefile) as ef:
             for line in ef:
-                net=line.strip()
+                net = line.strip()
                 if net:
                     exclude_nets.append(ipaddress.ip_network(net))
 
@@ -113,63 +105,54 @@ def parse_and_write(args, lines):
     total = len(lines)
     for idx, line in enumerate(lines, start=1):
         if args.live:
-            print(f"Processing {idx}/{total} lines...", end="\r", flush=True)
+            print(f"Processing {idx}/{total}...", end="\r", flush=True)
         m = pattern.search(line)
         if not m:
             continue
-        port, ip_str = m.group(1), m.group(2)
-        ip_addr = ipaddress.ip_address(ip_str)
-        if any(ip_addr in net for net in exclude_nets):
+        port, ip = m.group(1), m.group(2)
+        addr = ipaddress.ip_address(ip)
+        if any(addr in net for net in exclude_nets):
             continue
-        ports_map.setdefault(port, set()).add(ip_str)
+        ports_map.setdefault(port, set()).add(ip)
     if args.live:
         print()
 
     os.makedirs(args.output_dir, exist_ok=True)
     all_ips = set()
     for port, ips in ports_map.items():
-        out_file = os.path.join(args.output_dir, f"port-{port}")
-        with open(out_file, 'w') as f:
+        fname = os.path.join(args.output_dir, f"port-{port}")
+        with open(fname, 'w') as f:
             for ip in sorted(ips):
                 f.write(ip + "\n")
                 all_ips.add(ip)
-        print(f"[+] Wrote {len(ips)} addresses to {out_file}")
+        print(f"[+] Wrote {len(ips)} IPs to {fname}")
         if args.hook_cmd:
             for ip in sorted(ips):
                 for tmpl in args.hook_cmd:
                     cmd = tmpl.format(ip=ip, port=port)
-                    try:
-                        subprocess.run(cmd, shell=True, check=True)
-                    except subprocess.CalledProcessError:
-                        print(f"[!] Hook failed: {cmd}")
+                    subprocess.run(cmd, shell=True)
 
-    # Aggregated Nmap
     if args.nmap_output and all_ips:
-        ip_list_file = os.path.join(args.output_dir, "_all_ips.txt")
-        with open(ip_list_file, 'w') as f:
+        ip_file = os.path.join(args.output_dir, "_all_ips.txt")
+        with open(ip_file, 'w') as f:
             for ip in sorted(all_ips):
                 f.write(ip + "\n")
-        # Build Nmap command with chosen format
         if args.nmap_format == 'A':
-            nmap_cmd = f"nmap -p {args.ports} -iL {ip_list_file} -oA {args.nmap_output}"
+            ncmd = f"nmap -p {args.ports} -iL {ip_file} -oA {args.nmap_output}"
         else:
-            nmap_cmd = f"nmap -p {args.ports} -iL {ip_list_file} -o{args.nmap_format} {args.nmap_output}.{args.nmap_format.lower()}"
-        print(f"[+] Running aggregated Nmap: {nmap_cmd}")
-        try:
-            subprocess.run(nmap_cmd, shell=True, check=True)
-            print(f"[+] Aggregated Nmap output saved")
-        except subprocess.CalledProcessError:
-            print(f"[!] Aggregated Nmap failed: {nmap_cmd}")
-        finally:
-            os.remove(ip_list_file)
+            ext = args.nmap_format.lower()
+            ncmd = f"nmap -p {args.ports} -iL {ip_file} -o{args.nmap_format} {args.nmap_output}.{ext}"
+        print(f"[+] Running Nmap: {ncmd}")
+        subprocess.run(ncmd, shell=True)
+        os.remove(ip_file)
 
 if __name__ == '__main__':
     args = parse_args()
-    print(f"[INFO] Running scan: ports={args.ports}, rate={args.rate}")
-    lines = run_masscan(args)
+    print(f"[INFO] mpex scanning ports={args.ports}, rate={args.rate}")
+    res = run_masscan(args)
     if args.live:
-        print(f"[INFO] Parsing {len(lines)} results...")
+        print(f"[INFO] Parsing {len(res)} lines...")
     else:
         print("[INFO] Parsing output...")
-    parse_and_write(args, lines)
-    print("[DONE] Completed masscan-port-extractor workflow.")
+    parse_and_write(args, res)
+    print("[DONE] Completed mpex workflow.")
