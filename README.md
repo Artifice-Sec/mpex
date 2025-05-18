@@ -1,6 +1,6 @@
 # mpex
 
-**mpex** (**M**asscan **P**ort **EX**tractor) is a Python-based orchestration tool that automates Masscan scans against single hosts, CIDR ranges, or bulk target lists. It runs Masscan under the hood, parses its output into per-port IP files, supports live streaming feedback, custom host exclusions, and plugin hooks for any downstream command (curl, Nikto, custom scripts, etc.).
+**mpex** (Masscan Port EXtractor) is a Python-based orchestration tool that automates Masscan scans against single hosts, CIDR ranges, or bulk target lists. It runs Masscan under the hood, parses its output into per-port IP files, supports live streaming feedback, custom host exclusions, and plugin hooks for any downstream command (curl, Nikto, custom scripts, etc.).
 
 For deeper analysis, it can perform one aggregated Nmap run in your choice of formats (normal, XML, grepable, script, or all). By consolidating scanning, parsing, and post-processing into a single command, **mpex** dramatically reduces manual effort and accelerates large-scale network-discovery workflows.
 
@@ -104,46 +104,29 @@ python3 mpex.py [TARGET] --ports PORTS [OPTIONS]
 ## 🔧 Examples
 
 1. **Scan a /24 and exclude gateway**
-   ```bash
-   python3 mpex.py \
-     --cidr 192.168.0.0/24 \
-     --ports 80,443,22 \
-     --exclude 192.168.0.1
-   ```
+```bash
+python3 mpex.py --cidr 192.168.0.0/24 --ports 80,443,22 --exclude 192.168.0.1
+```
 
 2. **Stream live results with parsing feedback**
-   ```bash
-   python3 mpex.py \
-     --ip 192.168.0.117 \
-     --ports 445 \
-     --live
-   ```
+```bash
+python3 mpex.py --ip 192.168.0.117 --ports 445 --live
+```
 
 3. **Banner grabs and vulnerability scans**
-   ```bash
-   python3 mpex.py \
-     --cidr 10.0.0.0/24 \
-     --ports 80 \
-     --hook-cmd "curl http://{ip}:{port}" \
-     --hook-cmd "nikto -h http://{ip}:{port}"
-   ```
+```bash
+python3 mpex.py --cidr 10.0.0.0/24 --ports 80 --hook-cmd "curl http://{ip}:{port}" --hook-cmd "nikto -h http://{ip}:{port}"
+```
 
 4. **Send notifications on discovery**
-   ```bash
-   python3 mpex.py \
-     --cidr 10.0.0.0/24 \
-     --ports 22 \
-     --hook-cmd "echo 'SSH open on {ip}' | mail -s 'SSH Alert' you@domain.com"
-   ```
+```bash
+python3 mpex.py --cidr 10.0.0.0/24 --ports 22 --hook-cmd "echo 'SSH open on {ip}' | mail -s 'SSH Alert' you@domain.com"
+```
 
 5. **Aggregated Nmap `all` formats**
-   ```bash
-   python3 mpex.py \
-     --input-file hosts.txt \
-     --ports 22,80,443 \
-     --nmap-output fullscan \
-     --nmap-format A
-   ```
+```bash
+python3 mpex.py --input-file hosts.txt --ports 22,80,443 --nmap-output fullscan --nmap-format A
+```
 
 ---
 
