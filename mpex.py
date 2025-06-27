@@ -3,9 +3,9 @@
 mpex.py: A Python wrapper around Masscan to scan targets, exclude hosts, live-status, plugin hooks, and flexible aggregated Nmap outputs.
 
 Usage examples:
-  python mpex.py --cidr 192.168.0.0/24 --ports 80,443 --rate 1000 --exclude 192.168.0.1
-  python mpex.py --input-file targets.txt --ports 22,80 --rate 1500 --excludefile skip.txt --live --hook-cmd "nmap -p {port} -oX nmap_{port}_{ip}.xml {ip}"
-  python mpex.py --ip 192.168.0.117 --ports 445 --rate 1000
+  python mpex.py --cidr 192.168.0.0/24 --ports 80,443 --rate 1000 --interface eth0 --router-mac 00:11:22:33:44:55 --exclude 192.168.0.1
+  python mpex.py --input-file targets.txt --ports 22,80 --rate 5000 --interface tun0 --excludefile skip.txt --live --hook-cmd "nmap -p {port} -oX nmap_{port}_{ip}.xml {ip}"
+  python mpex.py --ip 192.168.0.117 --ports 445 --rate 1000 --interface eth1
   python mpex.py --cidr 192.168.0.0/24 --ports 22,80,443 --rate 1000 --nmap-output allscan --nmap-format A
 """
 import argparse
@@ -35,6 +35,8 @@ def parse_args():
                         help="Max packets per second (masscan --max-rate), default=1000")
     parser.add_argument("--output-dir", default=".",
                         help="Directory to save outputs and hook results")
+    parser.add_argument("--interface", help="Network interface for Masscan, e.g. eth0 or tun0")
+    parser.add_argument("--router-mac", help="Router MAC address for proper routing, e.g. 00:11:22:33:44:55")
     parser.add_argument("--exclude",
                         help="Comma-separated list of IPs or CIDRs to skip")
     parser.add_argument("--excludefile",
@@ -80,7 +82,7 @@ def parse_args():
         for net in args.exclude.split(','):
             try:
                 ipaddress.ip_network(net)
-            except Exception as e:
+            except Exception:
                 print(f"[ERROR] Invalid --exclude entry: {net}", file=sys.stderr)
                 sys.exit(1)
     if args.excludefile:
@@ -100,6 +102,10 @@ def run_masscan(args, timeout=300):
     else:
         cmd.append(args.cidr)
     cmd += ["--max-rate", str(args.rate)]
+    if args.interface:
+        cmd += ["--interface", args.interface]
+    if args.router_mac:
+        cmd += ["--router-mac", args.router_mac]
     if args.exclude:
         cmd += ["--exclude", args.exclude]
     if args.excludefile:
