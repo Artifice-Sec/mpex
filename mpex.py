@@ -61,7 +61,7 @@ def parse_args():
     parser.add_argument("--output-dir", default=".",
                         help="Directory to save outputs and hook results")
     parser.add_argument("--auto-route", action="store_true",
-                        help="Auto-detect interface and router MAC for Masscan")
+                        help="Auto-detect default interface and gateway MAC, and apply them to Masscan")
     parser.add_argument("--interface", help="Network interface for Masscan, e.g. eth0 or tun0")
     parser.add_argument("--router-mac", help="Router MAC address for proper routing, e.g. 00:11:22:33:44:55")
     parser.add_argument("--exclude",
