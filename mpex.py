@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-mpex.py: A Python wrapper around Masscan with automatic interface/gateway detection, host exclusions, live feedback, plugin hooks, and flexible aggregated Nmap outputs.
+mpex.py: A Python wrapper around Masscan with automatic interface/gateway detection,
+host exclusions, live feedback, plugin hooks, and flexible aggregated Nmap outputs.
 
 Usage examples:
   python mpex.py --cidr 192.168.0.0/24 --ports 80,443 --rate 1000 --auto-route
@@ -232,26 +233,26 @@ def parse_and_write(args, lines):
 
         if args.hook_cmd:
             for ip in sorted(ips):
-                for tmpl in args.hook-cmd:
+                for tmpl in args.hook_cmd:
                     cmd = tmpl.format(ip=ip, port=port)
                     subprocess.run(cmd, shell=True)
 
     # Aggregated Nmap run
-    if args.nmap-output and all_ips:
+    if args.nmap_output and all_ips:
         ip_file = os.path.join(args.output_dir, "_all_ips.txt")
         try:
             with open(ip_file, 'w') as f:
                 for ip in sorted(all_ips):
                     f.write(ip + "\n")
 
-            if args.nmap-format == 'A':
-                ncmd = f"nmap -p {args.ports} -iL {ip_file} -oA {args.nmap-output}"
+            if args.nmap_format == 'A':
+                ncmd = f"nmap -p {args.ports} -iL {ip_file} -oA {args.nmap_output}"
             else:
-                ext = args.nmap-format.lower()
-                ncmd = f"nmap -p {args.ports} -iL {ip_file} -o{args.nmap-format} {args.nmap-output}.{ext}"
+                ext = args.nmap_format.lower()
+                ncmd = f"nmap -p {args.ports} -iL {ip_file} -o{args.nmap_format} {args.nmap_output}.{ext}"
             print(f"[+] Running Nmap: {ncmd}")
             subprocess.run(ncmd, shell=True, check=True)
-            print(f"[+] Aggregated Nmap output saved to {args.nmap-output}.*")
+            print(f"[+] Aggregated Nmap output saved to {args.nmap_output}.*")
         except subprocess.CalledProcessError as e:
             print(f"[ERROR] Aggregated Nmap failed: {e}", file=sys.stderr)
         except IOError as e:
@@ -277,6 +278,7 @@ def main():
     except KeyboardInterrupt:
         print("\n[INFO] Interrupted by user. Cleaning up and exiting.")
         sys.exit(1)
+
 
 if __name__ == '__main__':
     main()
