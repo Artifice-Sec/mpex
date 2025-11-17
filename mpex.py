@@ -111,8 +111,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     # Aggregated Nmap options
     parser.add_argument("--nmap-output", help="Base name for aggregated Nmap outputs")
-    parser.add_argument("--nmap-format", choices=["N", "X", "G", "S", "A"], default="X",
-                        help="Format: N=normal, X=xml, G=grepable, S=script, A=all")
+    parser.add_argument("--nmap-format", choices=["N", "X", "G", "S", "A"], default="N",
+                        help="Format: N=normal, X=xml, G=grepable, S=script, A=all (default: N)")
     parser.add_argument("--nmap-open", action="store_true", help="Pass --open so Nmap prints only open ports")
     return parser
 
@@ -198,12 +198,12 @@ def build_masscan_cmd(args: argparse.Namespace) -> list:
     return cmd
 
 
-def run_masscan(args: argparse.Namespace, timeout: int = 300) -> list[str]:
+def run_masscan(args: argparse.Namespace, timeout: int = 300) -> list:
     cmd = build_masscan_cmd(args)
     if args.live:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
         print("[LIVE] Scanning... streaming results")
-        lines: list[str] = []
+        lines = []
         try:
             while True:
                 raw = proc.stdout.readline()
@@ -237,7 +237,7 @@ def run_masscan(args: argparse.Namespace, timeout: int = 300) -> list[str]:
             sys.exit(1)
 
 
-async def _run_hook_shell(cmd: str, sem: asyncio.Semaphore) -> tuple[int, str]:
+async def _run_hook_shell(cmd: str, sem: asyncio.Semaphore):
     async with sem:
         proc = await asyncio.create_subprocess_shell(
             cmd,
@@ -249,16 +249,16 @@ async def _run_hook_shell(cmd: str, sem: asyncio.Semaphore) -> tuple[int, str]:
         return proc.returncode, out_text
 
 
-async def run_hooks_async(hook_cmds: list[str], ip: str, port: str, output_dir: str) -> list[tuple[str, int, str]]:
+async def run_hooks_async(hook_cmds: list, ip: str, port: str, output_dir: str):
     sem = asyncio.Semaphore(DEFAULT_HOOK_CONCURRENCY)
     tasks = []
-    results: list[tuple[str, int, str]] = []
+    results = []
     for tmpl in hook_cmds:
         q_ip = shlex.quote(ip)
         q_port = shlex.quote(str(port))
         cmd = tmpl.format(ip=q_ip, port=q_port)
         tasks.append(asyncio.create_task(_run_hook_shell(cmd, sem)))
-        results.append((cmd, 0, ""))
+        results.append((cmd, None, None))
     completed = await asyncio.gather(*tasks, return_exceptions=False)
     final = []
     for (cmd_entry, res) in zip(results, completed):
@@ -276,7 +276,7 @@ async def run_hooks_async(hook_cmds: list[str], ip: str, port: str, output_dir: 
     return final
 
 
-def parse_and_write(args: argparse.Namespace, lines: list[str]) -> None:
+def parse_and_write(args: argparse.Namespace, lines: list) -> None:
     if not lines:
         print("[WARNING] No output from masscan; exiting.")
         sys.exit(0)
@@ -310,7 +310,7 @@ def parse_and_write(args: argparse.Namespace, lines: list[str]) -> None:
             print(f"[ERROR] Unable to read exclusion file: {e}", file=sys.stderr)
             sys.exit(1)
 
-    ports_map: dict[tuple[str, str], set[str]] = {}  # (port, proto) -> set of ips
+    ports_map = {}  # (port, proto) -> set of ips
     total = len(lines)
     for idx, line in enumerate(lines, start=1):
         if args.live:
@@ -331,7 +331,7 @@ def parse_and_write(args: argparse.Namespace, lines: list[str]) -> None:
         print()
 
     os.makedirs(args.output_dir, exist_ok=True)
-    all_ips: set[str] = set()
+    all_ips = set()
 
     # Write per-port files
     for (port, proto), ips in ports_map.items():
@@ -364,7 +364,6 @@ def parse_and_write(args: argparse.Namespace, lines: list[str]) -> None:
                 tasks.append(run_hooks_async(args.hook_cmd, ip, port, args.output_dir))
         if tasks:
             print(f"[INFO] Running {len(tasks)} hook tasks (concurrency {DEFAULT_HOOK_CONCURRENCY})")
-            # Use asyncio.run for modern Python
             async def _runner():
                 await asyncio.gather(*tasks)
             asyncio.run(_runner())
