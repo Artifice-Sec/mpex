@@ -10,8 +10,8 @@ mpex.py: A polished Python wrapper around Masscan with:
  - safer subprocess usage for Nmap (list args) and quoted hook substitutions
 
 Usage examples:
-  python mpex.py --cidr 192.168.0.0/24 --ports 80,443 --rate 1000 --auto-route
-  python mpex.py --input-file targets.txt --ports 53,161 --udp --rate 5000 --auto-route --live \
+  ./mpex.py --cidr 192.168.0.0/24 --ports 80,443 --rate 1000 --auto-route
+  ./mpex.py --input-file targets.txt --ports 53,161 --udp --rate 5000 --auto-route --live \
       --hook-cmd "nikto -h http://{ip}:{port}" --nmap-output nmap-agg --nmap-open
 """
 import argparse
@@ -24,13 +24,17 @@ import socket
 import shutil
 import ipaddress
 import shlex
-from datetime import datetime
 
 PORTS_PATTERN = re.compile(r"^(\d+(-\d+)?)(,(\d+(-\d+)?))*$")
 MASSCAN_PATTERN = re.compile(r"Discovered open port (\d+)/(tcp|udp) on ([0-9a-fA-F:\.]+)")
 DEFAULT_HOOK_CONCURRENCY = 20
 
+# ---------------------------
+# Helpers
+# ---------------------------
+
 def detect_route():
+    """Detect default route and gateway MAC address. Returns (iface, mac)."""
     try:
         out = subprocess.check_output(["ip", "route", "show", "default"], text=True)
         m = re.search(r"default\s+via\s+([0-9a-fA-F\.:]+)\s+dev\s+(\S+)", out)
@@ -59,36 +63,77 @@ def detect_route():
         sys.exit(1)
     return iface, mac
 
-def parse_args():
+
+def masscan_ports_from_user(ports_str: str, udp: bool = False) -> str:
+    """Return a Masscan-ready port string. If udp=True, prefix each token with 'U:'."""
+    tokens = [t.strip() for t in ports_str.split(',') if t.strip()]
+    out_tokens = []
+    for t in tokens:
+        if udp:
+            out_tokens.append(t if t.upper().startswith('U:') else 'U:' + t)
+        else:
+            out_tokens.append(t.lstrip('U:'))
+    return ','.join(out_tokens)
+
+
+# ---------------------------
+# Argument parsing
+# ---------------------------
+
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="mpex: orchestrate Masscan scans with auto-route, exclusions, live feedback, hooks, and aggregated Nmap"
+        description=(
+            "mpex: orchestrate Masscan scans with auto-route, exclusions, live feedback, "
+            "hooks, and aggregated Nmap"
+        ),
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--cidr", help="CIDR range to scan, e.g. 192.168.0.0/24")
     group.add_argument("--input-file", help="File containing targets (one per line)")
     group.add_argument("--ip", help="Single IP address to scan, e.g. 192.168.0.117")
+
     parser.add_argument("--ports", required=True, help="Comma-separated list of ports or ranges, e.g. 80,443,1000-1100")
-    parser.add_argument("--rate", type=int, default=1000, help="Max packets per second (masscan --max-rate), default=1000")
+    parser.add_argument("--rate", type=int, default=1000, help="Max packets per second (masscan --max-rate)")
     parser.add_argument("--output-dir", default=".", help="Directory to save outputs and hook results")
+
     parser.add_argument("--auto-route", action="store_true", help="Auto-detect default interface and gateway MAC")
     parser.add_argument("--interface", help="Network interface for Masscan, e.g. eth0 or tun0")
     parser.add_argument("--router-mac", help="Router MAC address for proper routing")
+
     parser.add_argument("--exclude", help="Comma-separated list of IPs or CIDRs to skip")
     parser.add_argument("--excludefile", help="File containing IPs/CIDRs to skip, one per line")
+
     parser.add_argument("--live", action="store_true", help="Stream Masscan output and show parsing progress")
     parser.add_argument("--hook-cmd", action="append", help="Command to run per result; use {ip} and {port} placeholders.")
-    parser.add_argument("--nmap-output", help="Base name for aggregated Nmap outputs")
-    parser.add_argument("--nmap-format", choices=["N", "X", "G", "S", "A"], default="X", help="Format: N=normal, X=xml, G=grepable, S=script, A=all (default: X)")
+
     parser.add_argument("--udp", action="store_true", help="Scan UDP ports as well.")
-    parser.add_argument("--nmap-open", action="store_true", help="Pass --open to nmap so it only shows open ports")
+
+    # Aggregated Nmap options
+    parser.add_argument("--nmap-output", help="Base name for aggregated Nmap outputs")
+    parser.add_argument("--nmap-format", choices=["N", "X", "G", "S", "A"], default="X",
+                        help="Format: N=normal, X=xml, G=grepable, S=script, A=all")
+    parser.add_argument("--nmap-open", action="store_true", help="Pass --open so Nmap prints only open ports")
+    return parser
+
+
+def parse_args() -> argparse.Namespace:
+    parser = build_parser()
+    # If invoked with no arguments, show full help and exit cleanly.
+    if len(sys.argv) == 1:
+        parser.print_help()
+        sys.exit(0)
+
     args = parser.parse_args()
 
+    # Auto-route detection and override
     if args.auto_route:
         iface, mac = detect_route()
         args.interface = iface
         args.router_mac = mac
         print(f"[INFO] Auto-detected interface={iface}, router-mac={mac}")
 
+    # Binary checks
     if not shutil.which("masscan"):
         print("[ERROR] masscan binary not found.", file=sys.stderr)
         sys.exit(1)
@@ -96,21 +141,25 @@ def parse_args():
         print("[ERROR] nmap binary not found.", file=sys.stderr)
         sys.exit(1)
 
+    # Validate ports
     if not PORTS_PATTERN.match(args.ports):
         print(f"[ERROR] Invalid ports format: {args.ports}", file=sys.stderr)
         sys.exit(1)
 
+    # Validate targets and files
     try:
         if args.ip:
             ipaddress.ip_address(args.ip)
         elif args.cidr:
             ipaddress.ip_network(args.cidr)
-        elif args.input_file and not os.path.isfile(args.input_file):
-            raise FileNotFoundError(args.input_file)
+        elif args.input_file:
+            if not os.path.isfile(args.input_file):
+                raise FileNotFoundError(args.input_file)
     except Exception as e:
         print(f"[ERROR] Invalid target or missing file: {e}", file=sys.stderr)
         sys.exit(1)
 
+    # Validate excludes format (but do not yet load)
     if args.exclude:
         for net in args.exclude.split(','):
             try:
@@ -124,22 +173,13 @@ def parse_args():
 
     return args
 
-def masscan_ports_from_user(ports_str, udp=False):
-    tokens = [t.strip() for t in ports_str.split(',') if t.strip()]
-    out_tokens = []
-    for t in tokens:
-        if udp:
-            if not t.upper().startswith('U:'):
-                out_tokens.append('U:' + t)
-            else:
-                out_tokens.append(t)
-        else:
-            out_tokens.append(t.lstrip('U:'))
-    return ','.join(out_tokens)
 
-def build_masscan_cmd(args):
-    masscan_port_spec = masscan_ports_from_user(args.ports, udp=args.udp)
-    cmd = ["masscan", "-p", masscan_port_spec]
+# ---------------------------
+# Masscan execution and parsing
+# ---------------------------
+
+def build_masscan_cmd(args: argparse.Namespace) -> list:
+    cmd = ["masscan", "-p", masscan_ports_from_user(args.ports, udp=args.udp)]
     if args.input_file:
         cmd += ["-iL", args.input_file]
     elif args.ip:
@@ -157,12 +197,13 @@ def build_masscan_cmd(args):
         cmd += ["--excludefile", args.excludefile]
     return cmd
 
-def run_masscan(args, timeout=300):
+
+def run_masscan(args: argparse.Namespace, timeout: int = 300) -> list[str]:
     cmd = build_masscan_cmd(args)
     if args.live:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
         print("[LIVE] Scanning... streaming results")
-        lines = []
+        lines: list[str] = []
         try:
             while True:
                 raw = proc.stdout.readline()
@@ -195,31 +236,38 @@ def run_masscan(args, timeout=300):
             print(f"[ERROR] masscan failed: {e}\n{e.stderr}", file=sys.stderr)
             sys.exit(1)
 
-async def _run_hook_shell(cmd, sem):
+
+async def _run_hook_shell(cmd: str, sem: asyncio.Semaphore) -> tuple[int, str]:
     async with sem:
-        proc = await asyncio.create_subprocess_shell(cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+        proc = await asyncio.create_subprocess_shell(
+            cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
         out, _ = await proc.communicate()
         out_text = out.decode(errors="ignore") if out else ""
         return proc.returncode, out_text
 
-async def run_hooks_async(hook_cmds, ip, port, output_dir):
+
+async def run_hooks_async(hook_cmds: list[str], ip: str, port: str, output_dir: str) -> list[tuple[str, int, str]]:
     sem = asyncio.Semaphore(DEFAULT_HOOK_CONCURRENCY)
     tasks = []
-    results = []
+    results: list[tuple[str, int, str]] = []
     for tmpl in hook_cmds:
         q_ip = shlex.quote(ip)
         q_port = shlex.quote(str(port))
         cmd = tmpl.format(ip=q_ip, port=q_port)
         tasks.append(asyncio.create_task(_run_hook_shell(cmd, sem)))
-        results.append((cmd, None, None))
+        results.append((cmd, 0, ""))
     completed = await asyncio.gather(*tasks, return_exceptions=False)
     final = []
     for (cmd_entry, res) in zip(results, completed):
         cmd = cmd_entry[0]
         returncode, output = res
-        safe_fname = os.path.join(output_dir, f"hook-{re.sub(r'[^A-Za-z0-9._-]+', '_', cmd)[:80]}.log")
+        safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", cmd)[:80]
+        log_path = os.path.join(output_dir, f"hook-{safe_name}.log")
         try:
-            with open(safe_fname, "w") as hf:
+            with open(log_path, "w") as hf:
                 hf.write(f"CMD: {cmd}\n\n")
                 hf.write(output or "")
         except Exception:
@@ -227,11 +275,13 @@ async def run_hooks_async(hook_cmds, ip, port, output_dir):
         final.append((cmd, returncode, output))
     return final
 
-def parse_and_write(args, lines):
+
+def parse_and_write(args: argparse.Namespace, lines: list[str]) -> None:
     if not lines:
         print("[WARNING] No output from masscan; exiting.")
         sys.exit(0)
 
+    # Build exclusion set of networks
     exclude_nets = {ipaddress.ip_network("127.0.0.1/32")}
     try:
         for ip in socket.gethostbyname_ex(socket.gethostname())[2]:
@@ -260,7 +310,7 @@ def parse_and_write(args, lines):
             print(f"[ERROR] Unable to read exclusion file: {e}", file=sys.stderr)
             sys.exit(1)
 
-    ports_map = {}  # (port, proto) -> set of ips
+    ports_map: dict[tuple[str, str], set[str]] = {}  # (port, proto) -> set of ips
     total = len(lines)
     for idx, line in enumerate(lines, start=1):
         if args.live:
@@ -281,8 +331,9 @@ def parse_and_write(args, lines):
         print()
 
     os.makedirs(args.output_dir, exist_ok=True)
-    all_ips = set()
+    all_ips: set[str] = set()
 
+    # Write per-port files
     for (port, proto), ips in ports_map.items():
         base_name = f"{port}-{proto}"
         fname = os.path.join(args.output_dir, f"{base_name}.txt")
@@ -295,25 +346,30 @@ def parse_and_write(args, lines):
         except IOError as e:
             print(f"[ERROR] Failed to write {fname}: {e}", file=sys.stderr)
 
-    base_all_fname = os.path.join(args.output_dir, "all_ips.txt")
+    # Write single all-IPs file (unique IPs; no ports)
+    all_fname = os.path.join(args.output_dir, "all_ips.txt")
     try:
-        with open(base_all_fname, "w") as af:
+        with open(all_fname, "w") as af:
             for ip in sorted(all_ips):
                 af.write(ip + "\n")
-        print(f"[+] Wrote {len(all_ips)} unique IPs to {base_all_fname}")
+        print(f"[+] Wrote {len(all_ips)} unique IPs to {all_fname}")
     except IOError as e:
-        print(f"[ERROR] Failed to write {base_all_fname}: {e}", file=sys.stderr)
+        print(f"[ERROR] Failed to write {all_fname}: {e}", file=sys.stderr)
 
+    # Run hook commands if requested
     if args.hook_cmd and ports_map:
-        async_tasks = []
-        loop = asyncio.get_event_loop()
+        tasks = []
         for (port, proto), ips in ports_map.items():
             for ip in sorted(ips):
-                async_tasks.append(run_hooks_async(args.hook_cmd, ip, port, args.output_dir))
-        if async_tasks:
-            print(f"[INFO] Running {len(async_tasks)} hook tasks (concurrency {DEFAULT_HOOK_CONCURRENCY})")
-            loop.run_until_complete(asyncio.gather(*async_tasks))
+                tasks.append(run_hooks_async(args.hook_cmd, ip, port, args.output_dir))
+        if tasks:
+            print(f"[INFO] Running {len(tasks)} hook tasks (concurrency {DEFAULT_HOOK_CONCURRENCY})")
+            # Use asyncio.run for modern Python
+            async def _runner():
+                await asyncio.gather(*tasks)
+            asyncio.run(_runner())
 
+    # Aggregated Nmap run if requested
     if args.nmap_output and all_ips:
         ip_file = os.path.join(args.output_dir, "_all_ips.txt")
         try:
@@ -346,16 +402,23 @@ def parse_and_write(args, lines):
             except OSError:
                 pass
 
-def main():
+
+# ---------------------------
+# Entrypoint
+# ---------------------------
+
+def main() -> None:
     try:
         args = parse_args()
         print(f"[INFO] mpex scanning ports={args.ports}, rate={args.rate}")
         lines = run_masscan(args)
-        if args.live:
-            print(f"[INFO] Parsing {len(lines)} lines...")
-        else:
-            print("[INFO] Parsing output...")
+        print("[INFO] Parsing output...")
         parse_and_write(args, lines)
         print("[DONE] Completed mpex workflow.")
     except KeyboardInterrupt:
         print("\n[INFO] Interrupted by user. Cleaning up and exiting.")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
